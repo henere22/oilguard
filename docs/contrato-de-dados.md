@@ -4,7 +4,7 @@ Endpoint: `POST /api/v1/readings`
 
 Content-Type: `application/json`
 
-Use HTTPS no ambiente publicado e envie a credencial de dispositivo em `X-Ingest-Token`. A credencial é configurada como `INGEST_TOKEN` no backend. Em desenvolvimento, o simulador por terminal usa a credencial do banco de simulação.
+Use HTTPS no ambiente publicado e envie a credencial de dispositivo em `X-Ingest-Token`. A credencial é configurada como `INGEST_TOKEN` na API. O Worker grava no banco de simulação e identifica essas leituras com `deviceId: "simulator-worker"`.
 
 ## Payload
 

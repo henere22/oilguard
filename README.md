@@ -4,11 +4,11 @@ OILGUARD acompanha o nível de óleo limpo e usado em dois compartimentos. A mes
 
 ## Desenvolvimento local
 
-Use Node.js 24 LTS e PostgreSQL 17. O arquivo `compose.yaml` oferece PostgreSQL com volume persistente e porta restrita ao computador local. Use um servidor PostgreSQL já instalado se preferir.
+Use Node.js 24 LTS e PostgreSQL 17. O arquivo `compose.yaml` oferece PostgreSQL com volume persistente e porta restrita ao computador local. Use um servidor PostgreSQL já instalado se preferir. O [guia Northflank](docs/implantacao-nuvem.md) inclui comandos para testar as duas imagens localmente.
 
 1. Instale as dependências com `npm install`.
 2. Defina `POSTGRES_PASSWORD` na sessão do PowerShell ou em um `.env` na raiz. Inicie o banco com `docker compose up -d --wait postgres`.
-3. Crie `apps/api/.env` a partir de `apps/api/.env.example`, se ele ainda não existir. Configure `DATABASE_URL` ou as variáveis `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD` e `PGDATABASE`. Com Compose, os padrões são `127.0.0.1:5432`, usuário `oilguard` e banco `oilguard`. Use a mesma senha configurada no Compose.
+3. Crie `apps/api/.env` a partir de `apps/api/.env.example`, se ele ainda não existir. Configure `DATABASE_URL`. Com o PostgreSQL do Compose e os processos executados direto no computador, os padrões são `127.0.0.1:5432`, usuário `oilguard` e banco `oilguard`. Use a mesma senha configurada no Compose.
 4. Execute `npm run db:migrate`. Para importar o legado, siga o procedimento abaixo antes de gravar novas leituras.
 5. Crie a conta principal com o procedimento abaixo. Execute `npm run dev` e abra `http://localhost:5173`. A API responde em `http://127.0.0.1:3333/api/health`.
 
@@ -53,13 +53,15 @@ Ao concluir a recuperação da senha, o bloqueio por tentativas da conta é limp
 
 ## Simulador
 
-Em `DATA_MODE=simulation`, o administrador pode usar o simulador em Configurações. Para o simulador de terminal, configure `INGEST_TOKEN` na API e na sessão do terminal com o mesmo segredo aleatório. Execute `npm run simulator`, usando `API_URL` caso a API esteja em outro endereço. O ambiente fica identificado na interface e nos CSVs.
+Em `DATA_MODE=simulation`, defina `SIMULATOR_ENABLED=true` em `apps/api/.env` para a API e o Worker. Execute `npm run dev:api` para iniciar só a API ou `npm run dev` para iniciar a API e o Vite. Em outro terminal, execute `npm run worker`. Os dois processos usam o mesmo `DATABASE_URL`. O Worker responde em `http://127.0.0.1:3336/healthz` e o ambiente fica identificado na interface e nos CSVs.
+
+Entre como administrador e use **Configurações → Simulador Interno** para selecionar o cenário e o intervalo, iniciar, pausar ou reiniciar. A simulação começa pausada em um banco novo. Uma execução já autorizada permanece registrada no PostgreSQL e pode continuar quando a interface fecha ou o Worker volta. Pause antes de encerrar a demonstração. A reinicialização zera o contador do cenário e os níveis do simulador. O histórico de leituras é preservado.
 
 ## Aplicativos e validação
 
 - **Windows.** Configure `VITE_API_URL` em `apps/client/.env.desktop`. Use `npm run dev:desktop` ou `npm run build:desktop` para o instalador Tauri. O build exige Rust MSVC, Build Tools C++ e WebView2.
 - **Android.** Configure `VITE_API_URL` em `apps/client/.env.android`. Execute `npm run android:add` na primeira vez, `npm run android:sync` a cada build e `npm run android:open` para gerar o APK no Android Studio. Para teste por HTTP em LAN confiável, use o IPv4 do PC, configure `HOST=0.0.0.0` na API, libere a porta somente na rede privada e defina `OILGUARD_ANDROID_LOCAL_HTTP=true` antes de sincronizar. Para o APK de produção, use HTTPS e mantenha esse sinalizador desativado.
-- **Website.** Execute `npm run build` e sirva o resultado na mesma origem da API com `SERVE_WEB=true` e `npm start`.
+- **Website.** Execute `npm run build` e sirva o resultado na mesma origem da API com `SERVE_WEB=true` e `npm start`. Para testar a autenticação no site servido diretamente pelo Express em HTTP local, inclua essa origem em `CORS_ORIGINS`.
 
 ```powershell
 npm test

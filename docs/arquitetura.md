@@ -7,7 +7,7 @@ Sensores → CLP → Modbus RTU / RS-485 → ESP32
  React Web ── HTTPS ───────────► Node.js / Express ◄── HTTPS ── Windows (Tauri 2)
                                 ▲        │
       Android (Capacitor 8) ────┘        ▼
-                                     PostgreSQL
+                                     PostgreSQL ◄──── Worker de simulação
 ```
 
 A API Express valida leituras, aplica limites, administra contas e oferece os mesmos endpoints ao navegador, Windows e Android. O PostgreSQL é o único banco usado em execução. A integração Modbus será realizada no ESP32 pela equipe de mecatrônica.
@@ -25,6 +25,7 @@ A API Express valida leituras, aplica limites, administra contas e oferece os me
 | `password_recovery_tokens` | Códigos de uso único em hash, vinculados ao usuário. |
 | `audit_logs` | Ação, data, autor e usuário afetado, quando aplicáveis. |
 | `login_limits` | Contadores temporários compartilhados para tentativas de login e recuperação. |
+| `simulator_state` | Estado único do simulador, com autorização de execução, cenário, intervalo, níveis, contador, próxima leitura e sinal recente do Worker. |
 | `system_settings`, `schema_migrations`, `legacy_imports` | Identificação do modo, versões aplicadas e histórico de importação conferida. |
 
 Leituras e mudanças de configuração atualizam o nível e os alertas dentro de transações. Leituras antigas recebidas fora de ordem entram no histórico sem substituir o nível corrente. A API monta o histórico operacional a partir de leituras e alertas persistidos. Relatórios e previsões são calculados sob demanda a partir dessas tabelas. Os relatórios agrupam o calendário por dia UTC e a versão mais recente gerada de cada intervalo é registrada no PostgreSQL.
@@ -32,6 +33,13 @@ Leituras e mudanças de configuração atualizam o nível e os alertas dentro de
 O SQLite original continha `tanks`, `readings`, `alerts` e a sequência interna para IDs. A migração preserva nomes, chaves, valores e tempos, incluindo IDs de registros excluídos da sequência. Datas de texto passaram a `timestamptz` e alertas ativos foram convertidos de 0/1 para booleano.
 
 Cada PostgreSQL tem modo fixado na primeira inicialização. O modo simulação contém apenas dados de demonstração/teste, incluindo o legado desta estação. O modo operacional usa ingestão por credencial própria e um banco independente.
+
+## Serviços em execução
+
+- API + Website. O Express serve o React compilado e a API na mesma origem HTTPS. Windows, Android e ESP32 usam essa API.
+- Worker. Processo independente que mantém um advisory lock de sessão no PostgreSQL. A cada execução grava as duas leituras, atualiza os alertas e avança o estado em uma única transação. As previsões continuam sendo calculadas pela API a partir do mesmo histórico.
+
+Administradores controlam início, pausa, intervalo, cenário e reinicialização por meio da API. A ativação requer `DATA_MODE=simulation`, `SIMULATOR_ENABLED=true` e um comando explícito. O Worker mantém a execução autorizada quando o navegador fecha ou a API reinicia. Ao retomar após uma interrupção, calcula a próxima leitura sem preencher retroativamente os intervalos perdidos.
 
 ## Controle de acesso
 

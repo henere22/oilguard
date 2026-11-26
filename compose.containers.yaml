@@ -1,0 +1,28 @@
+services:
+  api:
+    build:
+      context: .
+      target: api
+    environment:
+      NODE_ENV: development
+      DATA_MODE: ${DATA_MODE:-simulation}
+      DATABASE_URL: ${DATABASE_URL:?Configure DATABASE_URL para o PostgreSQL do Compose}
+      SIMULATOR_ENABLED: ${SIMULATOR_ENABLED:-false}
+      CORS_ORIGINS: http://localhost:${OILGUARD_HTTP_PORT:-3337},http://127.0.0.1:${OILGUARD_HTTP_PORT:-3337}
+    ports:
+      - "127.0.0.1:${OILGUARD_HTTP_PORT:-3337}:3333"
+    depends_on:
+      postgres:
+        condition: service_healthy
+  worker:
+    build:
+      context: .
+      target: worker
+    environment:
+      NODE_ENV: development
+      DATA_MODE: ${DATA_MODE:-simulation}
+      DATABASE_URL: ${DATABASE_URL:?Configure DATABASE_URL para o PostgreSQL do Compose}
+      SIMULATOR_ENABLED: ${SIMULATOR_ENABLED:-false}
+    depends_on:
+      postgres:
+        condition: service_healthy

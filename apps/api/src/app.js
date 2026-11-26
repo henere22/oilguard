@@ -81,7 +81,7 @@ export function createApp() {
     upgradeInsecureRequests: production ? [] : null,
   } } }));
   // O health check interno fala HTTP diretamente com o container.
-  app.get('/healthz', async (_req, res) => {
+  app.get('/healthz', rateLimit({ max: 120 }), async (_req, res) => {
     await db.query('SELECT 1 FROM system_settings');
     res.set('Cache-Control', 'no-store').json({ status: 'ok' });
   });
