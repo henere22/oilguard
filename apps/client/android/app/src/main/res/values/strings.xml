@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">OILGUARD</string>
+    <string name="title_activity_main">OILGUARD</string>
+    <string name="package_name">com.oilguard.monitoramento</string>
+    <string name="custom_url_scheme">com.oilguard.monitoramento</string>
+</resources>

@@ -1,0 +1,181 @@
+Claude, minha namorada criou esse projeto no SENAI para a Bosch, e a parte dela e da equipe dela (mecatrônica) vai até a saída de dados pra rede, eu topei em fazer a programação de um app/software que possa mostrar tudo isso, pegando os dados que chegam nessa rede e demonstrando os dashboards, utilização de tanques, nivel de residuos, porém, faz dois anos que me formei do técnico de ADS e só agora estou entrando na materia de Engenharia de Software na faculdade em ADS, me ajude a clarear oque preciso fazer para poder ajudar eles com esse projeto, pois também é uma oportunidade sem igual para minha carreira e conhecimento
+
+Que projeto maneiro — e faz todo sentido você querer entrar nessa parte. Vou te dar um caminho claro, do jeito que ajuda quem já tem base de ADS mas está voltando ao assunto.
+
+1. Primeiro, alinhe a interface com a mecatrônica
+
+Antes de programar qualquer coisa, você precisa saber exatamente como os dados chegam na rede. Pergunte pra equipe:
+
+Qual protocolo eles usam para enviar os dados (o mais comum em IoT é MQTT; às vezes é HTTP/REST simples)
+Qual formato dos dados (JSON, provavelmente) — nível, temperatura, timestamp, ID do tanque
+Se existe um broker/servidor já definido (ex: um broker MQTT tipo Mosquitto, ou vai direto pra um backend)
+Frequência de envio dos dados
+
+Isso é o contrato entre a parte deles e a sua — sem isso definido, você fica travado.
+
+2. Arquitetura que você precisa construir
+
+Olhando o protótipo que vocês já desenharam, o fluxo é: sensor → unidade IoT → nuvem (seu backend) → app/dashboard. Sua parte tem 3 blocos:
+
+Backend/API: recebe os dados da rede, salva num banco, processa alertas (nível crítico, baixo etc.) e expõe uma API para o app consumir
+Banco de dados: histórico de leituras, tanques, alertas
+Frontend: o app mobile (dashboard, gráfico, alertas, histórico) e/ou o dashboard web que aparece no mockup
+
+3. Stack sugerida pra quem está começando (sem exagerar)
+
+Backend: Node.js + Express (ou Python + FastAPI, se preferir — ambos têm boa documentação em PT)
+Banco: PostgreSQL ou até SQLite pro protótipo
+Ingestão MQTT: biblioteca tipo mqtt.js (Node) ou paho-mqtt
+Frontend web: React (o dashboard web do mockup dá pra fazer bem com isso)
+App mobile: se quiser rodar em celular também, React Native ou até um app web responsivo primeiro, pra não duplicar esforço
+
+4. Ordem prática de execução
+
+Simule os dados antes de ter o sensor real (um script que manda JSON fake pro seu backend) — assim você desenvolve sem depender da mecatrônica estar pronta
+Construa o backend: rota que recebe dados, salva no banco
+Construa a API que devolve os dados formatados (nível atual, histórico, alertas)
+Construa o dashboard web primeiro (mais rápido que app mobile)
+Depois replica pro app mobile, se der tempo
+Só no final, conecta com os dados reais da mecatrônica
+
+5. O que estudar, na ordem
+
+Fundamentos de API REST (se ainda não tem firme)
+MQTT (é rápido de aprender, tem tutoriais curtos)
+React básico (componentes, estado, requisições fetch)
+Modelagem de banco simples (tabelas de tanque, leitura, alerta)
+
+Quer que eu monte um esqueleto de backend (rotas + banco) já pronto pra você simular os dados e começar a codar hoje?
+
+é bom mencionar que temos 3 meses para poder realizar esse projeto
+
+Isso muda o jogo — dá pra fazer bem feito, mas sem enrolar. Aqui vai como eu dividiria os 3 meses:
+
+Mês 1 — Fundamentos + Backend
+
+Semana 1-2: aprender/revisar REST API e MQTT, alinhar o contrato de dados com a mecatrônica
+Semana 3-4: construir o backend (recebe dados via MQTT ou HTTP, salva no banco), testando com dados simulados (script seu, sem depender do sensor real)
+
+Mês 2 — Frontend / Dashboard
+
+Semana 1-2: dashboard web (React) consumindo a API — tela de tanques, nível atual, temperatura
+Semana 3-4: gráficos de histórico + sistema de alertas (crítico/baixo/normal), como no mockup
+
+Mês 3 — Integração real + Polimento
+
+Semana 1: conectar com os dados reais vindos da unidade IoT da mecatrônica (aqui é o ponto mais arriscado — reserve tempo extra)
+Semana 2: app mobile (se der tempo) ou versão responsiva do dashboard
+Semana 3: testes, ajustes, tratamento de erros (sensor offline, dados faltando)
+Semana 4: buffer para imprevistos + preparar apresentação/entrega
+
+Um conselho importante: não deixe a integração com o hardware real pro final sem testar antes. Combine com a equipe de mecatrônica um “checkpoint” no meio do mês 2, mesmo que só pra validar o formato dos dados que eles vão mandar — isso evita surpresa nas últimas semanas.
+
+Quer que eu já monte o esqueleto do backend pra você começar essa semana 1?
+
+Vou responder as três na ordem.
+
+1. Protocolos possíveis entre o CLP e o ESP32
+
+A resposta depende de qual CLP vocês vão usar (marca e modelo), porque ele define quais portas e protocolos existem. As opções mais comuns são estas.
+
+Modbus RTU sobre RS-485 (serial)
+
+É o mais comum e o mais provável. Quase todo CLP tem uma porta serial que fala Modbus.
+O ESP32 não tem RS-485 nativo. Ele precisa de um módulo conversor barato (tipo MAX485).
+O CLP expõe os dados em “registradores” (por exemplo, o registrador 100 guarda o nível do tanque 1), e o ESP32 lê esses números.
+
+Modbus TCP (Ethernet)
+
+É o mesmo Modbus, mas sobre rede. Só funciona se o CLP tiver porta Ethernet.
+Aqui o roteador ajuda: o CLP entra por cabo, o ESP32 por Wi-Fi, e os dois se enxergam pelo IP.
+Não precisa de conversor extra.
+
+Sinais diretos (entradas/saídas)
+
+Saída analógica do CLP (4-20 mA ou 0-10 V) ligada a uma entrada analógica do ESP32. Isso exige um circuito de adaptação de sinal.
+Saídas digitais, que só avisam “nível baixo” ou “nível crítico”.
+Funciona com qualquer CLP, mas é a opção mais limitada: transmite um valor ou um estado, não uma estrutura de dados.
+
+Protocolos de fabricante, como Siemens S7, EtherNet/IP (Allen-Bradley) e OPC UA.
+
+Dependem de marca e modelo, e são mais pesados de implementar no ESP32.
+Eu evitaria, a menos que o CLP só ofereça isso.
+
+Minha leitura: Modbus RTU ou Modbus TCP é o caminho mais provável, e o ESP32 tem bibliotecas prontas para os dois. Isso é assunto da mecatrônica, mas vale você perguntar pra equipe: “Qual o modelo do CLP e qual porta de comunicação ele tem?”. Sua parte continua igual, porque o ESP32 traduz tudo isso para HTTP + JSON.
+
+2. “Simples” vs “sofisticado” na previsão
+
+Falei isso porque o documento fala em “prever quando o óleo limpo vai acabar ou o sujo vai transbordar”, mas não diz como.
+
+Previsão simples (extrapolação de tendência):
+
+Você pega as leituras recentes e calcula a taxa de consumo.
+Depois estima o tempo restante até o limite.
+Exemplo: o tanque está em 60%, caiu 10 pontos nas últimas 2 horas (5%/hora) e o limite crítico é 15%. Então (60 − 15) ÷ 5 = 9 horas até o nível crítico.
+É matemática básica, não precisa de muito dado histórico, e dá pra implementar e explicar em poucos dias.
+
+Previsão sofisticada (modelos estatísticos ou machine learning):
+
+Considera que o consumo varia: turnos de trabalho, dia da semana, picos e paradas.
+Filtra ruído do sensor e aprende padrões, usando técnicas como séries temporais ou redes neurais.
+Precisa de bastante histórico real pra treinar e validar. Ruído e “sensor ruim” também precisam ser tratados.
+
+Por que isso importa pro seu caso: os dados da primeira fase são simulados. Um modelo sofisticado treinado em dado simulado só aprende a regra que você mesmo escreveu no simulador, então não prova nada. Por isso eu começaria pela versão simples. Se sobrar tempo e houver dado real, evolui depois. A pergunta pro professor é: “A previsão precisa ser um modelo de machine learning, ou uma estimativa por tendência atende?”
+
+3. Escolha do roteador
+
+Os critérios que eu usaria, em ordem de importância:
+
+Precisa ter Wi-Fi 2,4 GHz. O ESP32 comum não conecta em 5 GHz. Isso elimina roteadores só 5 GHz.
+Quantidade de portas LAN, que depende da decisão do item 1:
+Se o CLP usar Modbus TCP, ele precisa de cabo. Então você quer pelo menos 2 portas.
+Se tudo for por Wi-Fi, uma porta basta.
+Funcionar sem internet. A rede é isolada, então ele só precisa criar a rede e distribuir IPs.
+Reserva de IP (DHCP reservation). Serve para o notebook com o backend ter sempre o mesmo IP, senão o ESP32 perde o endereço do servidor.
+Alimentação. Se o local tiver tomada, qualquer um serve. Se não, um que funcione por USB com power bank ajuda.
+
+Não precisa de Wi-Fi 6/7, nem de velocidade alta. Os dados são JSONs minúsculos.
+
+Opções que encontrei na busca, que servem pelo critério:
+
+TP-Link TL-WR802N: roteador compacto, Wi-Fi 802.11n até 300 Mbit/s, com uma porta LAN Ethernet de 10/100. Alimenta por USB 5V 1A, então funciona com power bank. Só achei preço em euro (cerca de €27), sem preço brasileiro confirmado. 
+aio
+pccomponentes
+TP-Link TL-WR829N: só 2,4 GHz, até 300 Mbps, 2 portas LAN. O menor preço encontrado no Brasil era R$ 99,90. 
+buscape
+buscape
+TP-Link TL-WR840N: apareceu por R$ 107,55 no Pix com cupom na Shopee. Esse preço é de promoção e pode ter mudado. 
+xataka
+
+Minha sugestão: se o CLP for Modbus RTU (serial), a rede é só ESP32 + notebook por Wi-Fi, e o WR802N basta e é o mais prático de carregar. Se for Modbus TCP, ou se você quiser ligar o notebook por cabo, vá num modelo com mais portas, como o WR829N ou o WR840N. Então a escolha do roteador depende de a mecatrônica confirmar o modelo do CLP.
+
+Um detalhe prático: ao conectar o notebook nessa rede isolada, ele fica sem internet no Wi-Fi. Pra pesquisar e instalar coisas enquanto testa, você precisaria de um cabo ou de outra conexão em paralelo.
+
+Quando quiser seguir com o código, é só dar a ordem. O próximo passo continua sendo o schema.js.
+
+vamos seguir com Modbus RTU, e calculo simples, sobre o roteador, Roteador Wireless Multimodo 300 Mbps N300 Tl-wr829n Tp-link funcionaria? Link do produto: https://www.mercadolivre.com.br/roteador-wireless-multimodo-300-mbps-n300-tl-wr829n-tp-link/p/MLB64830622?pdp_filters=item_id%3AMLB5000382391&from=gshop&matt_tool=66719206&matt_word=&matt_source=google&matt_campaign_id=23440873632&matt_ad_group_id=194474630634&matt_match_type=&matt_network=g&matt_device=c&matt_creative=792396421645&matt_keyword=&matt_ad_position=&matt_ad_type=pla&matt_merchant_id=735098660&matt_product_id=MLB64830622-product&matt_product_partition_id=2495544834706&matt_target_id=aud-2495374164685:pla-2495544834706&cq_src=google_ads&cq_cmp=23440873632&cq_net=g&cq_plt=gp&cq_med=pla
+
+Sim, esse roteador funciona pro seu caso. O link que você mandou é longo demais e minha ferramenta não consegue abrir. Então busquei o mesmo modelo pelo nome, em outras lojas, e as especificações batem. Os preços que encontrei são de outras lojas, então confira o valor na página do Mercado Livre.
+
+Por que ele serve:
+
+Wi-Fi 2,4 GHz: é um modelo de banda única (2,4 GHz), 300 Mbps, com 2 antenas externas. Isso é o que o ESP32 precisa, já que ele não conecta em 5 GHz. 
+hardware
+Portas: 1 porta WAN e 2 portas LAN, todas 10/100. Dá pra ligar o notebook por cabo, ou o CLP, se algum dia vocês migrarem pra Modbus TCP. 
+buscape
+Segurança do Wi-Fi: suporta WPA/WPA2, então a rede isolada pode ter senha. 
+pontofrio
+Preço: apareceu a R$ 99,90 no Extra, e R$ 114,99 no Pix na Pichau. Isso fica em torno de R$ 100 a R$ 115. 
+extra
+pichau
+
+Dois cuidados:
+
+Ele não é portátil. Pelo que vi, é um roteador doméstico comum, que precisa de tomada, e não vi nas fichas que ele funcione por USB. Se o local da demonstração não tiver tomada perto, o TL-WR802N, que comentei antes, é a alternativa.
+Reserva de IP: roteadores TP-Link dessa linha costumam ter esse recurso nas configurações de DHCP, mas não consegui confirmar nas fichas. Confira na hora de configurar. Ele é o que garante que o notebook com o backend sempre tenha o mesmo endereço.
+
+Sobre o Modbus RTU: como a ligação CLP → ESP32 é serial, o roteador não participa dessa parte. Ele só entra entre o ESP32 e o seu backend. As duas portas LAN ficam como bônus. Pra mecatrônica, a pergunta passa a ser: “O CLP escolhido tem porta RS-485?” O ESP32 vai precisar de um módulo conversor (tipo MAX485) para ler os dados.
+
+Sobre o cálculo simples: isso facilita o nosso banco de dados. Como a previsão sai de uma conta sobre as leituras recentes, não precisamos de nenhuma tabela extra. O service calcula na hora, a partir da tabela leituras.
+
+Quando quiser seguir com o código, é só dar a ordem. O próximo passo continua sendo o schema.js.

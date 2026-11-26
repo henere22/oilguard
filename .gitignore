@@ -1,0 +1,36 @@
+
+# Dependências
+node_modules/
+
+# Dados e configurações locais
+.oilguard-local/
+
+# Builds
+dist/
+build/
+coverage/
+.env
+.env.*
+!.env.example
+!.env.desktop.example
+!.env.android.example
+*.log
+apps/api/data/*.sqlite
+apps/api/data/*.sqlite-shm
+apps/api/data/*.sqlite-wal
+apps/api/data/*.sqlite3
+apps/api/data/*.db
+*.dump
+apps/client/src-tauri/target/
+apps/client/src-tauri/gen/
+apps/client/android/.gradle/
+apps/client/android/local.properties
+apps/client/android/**/build/
+apps/client/android/.idea/
+apps/client/android/.cxx/
+apps/client/android/.externalNativeBuild/
+*.jks
+*.keystore
+key.properties
+.DS_Store
+Thumbs.db
