@@ -137,12 +137,25 @@ test('PostgreSQL, monitoramento e permissões', async () => {
     await call(usersPath + '/' + admin.id, {
       method: 'PATCH', status: 403, headers: { authorization: 'Bearer ' + promoted.data.token }, body: { active: false },
     });
+    for (let attempt = 1; attempt <= 10; attempt++) {
+      await call(auth + '/login', {
+        method: 'POST', status: 401, body: { ...loginBody, password: 'senha incorreta de teste' },
+      });
+    }
+    await call(auth + '/login', { method: 'POST', status: 429, body: loginBody });
     const renewed = await call(userPath + '/recovery', { method: 'POST', headers: adminHeaders });
-    await call(auth + '/recover', { method: 'POST', status: 204, body: { code: renewed.data.code, password: operatorPassword } });
+    const newPassword = randomBytes(24).toString('hex');
+    await call(auth + '/recover', { method: 'POST', status: 204, body: { code: renewed.data.code, password: newPassword } });
     await call(auth + '/me', { status: 401, headers: { authorization: 'Bearer ' + promoted.data.token } });
-    const fresh = await login();
+    await call(auth + '/login', { method: 'POST', status: 401, body: loginBody });
+    const fresh = await call(auth + '/login', {
+      method: 'POST', body: { username: loginBody.username, password: newPassword },
+    });
+    const expiredCookie = { cookie: fresh.headers.get('set-cookie').split(';')[0] };
     await db.query("UPDATE user_sessions SET expires_at = now() - interval '1 second' WHERE user_id = $1", [added.user.id]);
-    await call(auth + '/me', { status: 401, headers: { authorization: 'Bearer ' + fresh.data.token } });
+    await call(auth + '/me', { status: 401, headers: expiredCookie });
+    const expiredLogout = await call(auth + '/logout', { method: 'POST', status: 204, headers: expiredCookie });
+    assert.match(expiredLogout.headers.get('set-cookie'), /^oilguard_session=;/);
     for (let attempt = 1; attempt <= 11; attempt++) {
       await call(auth + '/login', { method: 'POST', status: attempt > 10 ? 429 : 401, body: { username: 'desconhecido', password: 'incorreta' } });
     }
@@ -150,7 +163,13 @@ test('PostgreSQL, monitoramento e permissões', async () => {
     const auditLog = await call('/v1/admin/audit?limit=10', { headers: adminHeaders });
     assert.equal(auditLog.data.data.length, 10);
     assert(auditLog.data.data.some(({ action }) => action === 'auth.login_failed'));
+    await call(auth + '/logout', {
+      method: 'POST', status: 403, headers: { ...adminHeaders, origin: 'https://desautorizada.example' },
+    });
+    await call(auth + '/me', { headers: adminHeaders });
     await call(auth + '/logout', { method: 'POST', status: 204, headers: adminHeaders });
+    await call(auth + '/logout', { method: 'POST', status: 204, headers: adminHeaders });
+    assert.equal((await one("SELECT count(*) AS total FROM audit_logs WHERE action = 'auth.logout'")).total, '1');
     await call('/v1/dashboard', { status: 401, headers: adminHeaders });
   } finally {
     if (server) await new Promise((resolve) => server.close(resolve));

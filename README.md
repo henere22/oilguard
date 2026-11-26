@@ -49,6 +49,8 @@ O procedimento é executado uma vez por banco. No aplicativo, use **Configuraç�
 
 O navegador recebe cookie HttpOnly e SameSite=Strict, com Secure em produção. Windows e Android enviam um token opaco mantido na memória do aplicativo e pedem login ao reabrir. As sessões duram até 8 horas e o PostgreSQL armazena apenas os hashes dos tokens. A redefinição de senha, desativação e troca de perfil revogam sessões associadas.
 
+Ao concluir a recuperação da senha, o bloqueio por tentativas da conta é limpo. O limite por IP continua aplicável. Sair da conta limpa o cookie mesmo se a sessão já tiver expirado.
+
 ## Simulador
 
 Em `DATA_MODE=simulation`, o administrador pode usar o simulador em Configurações. Para o simulador de terminal, configure `INGEST_TOKEN` na API e na sessão do terminal com o mesmo segredo aleatório. Execute `npm run simulator`, usando `API_URL` caso a API esteja em outro endereço. O ambiente fica identificado na interface e nos CSVs.

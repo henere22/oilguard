@@ -31,6 +31,13 @@ apps/client/android/.cxx/
 apps/client/android/.externalNativeBuild/
 *.jks
 *.keystore
+*.key
+*.pem
+*.p12
+*.pfx
+*.ppk
+id_rsa
+id_ed25519
 key.properties
 .DS_Store
 Thumbs.db

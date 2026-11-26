@@ -63,6 +63,10 @@ async function revokeSessions(connection, userId) {
   await connection.query('UPDATE user_sessions SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL', [userId]);
 }
 
+async function clearUserLoginLimit(connection, username) {
+  await connection.query('DELETE FROM login_limits WHERE bucket = $1', [digest(`login-user:${username}`)]);
+}
+
 async function invalidateRecovery(connection, userId) {
   await connection.query('UPDATE password_recovery_tokens SET used_at = now() WHERE user_id = $1 AND used_at IS NULL', [userId]);
 }
@@ -127,7 +131,7 @@ export function authRoutes({ secure }) {
       }
       const session = await one(`INSERT INTO user_sessions(token_hash, user_id, expires_at)
         VALUES ($1, $2, now() + interval '8 hours') RETURNING expires_at`, [digest(token), user.id], connection);
-      await connection.query('DELETE FROM login_limits WHERE bucket = $1', [digest(`login-user:${input.username}`)]);
+      await clearUserLoginLimit(connection, current.username);
       await audit(connection, 'auth.login', user.id, user.id);
       return session.expires_at;
     });
@@ -145,24 +149,30 @@ export function authRoutes({ secure }) {
     if (!candidate) throw new HttpError(400, 'Código inválido, expirado ou já usado.');
     const hash = await argon2.hash(input.password, hashOptions);
     await transaction(async (connection) => {
-      const user = await one('SELECT id, active FROM users WHERE id = $1 FOR UPDATE', [candidate.user_id], connection);
+      const user = await one('SELECT id, username, active FROM users WHERE id = $1 FOR UPDATE', [candidate.user_id], connection);
       const result = await connection.query(`UPDATE password_recovery_tokens SET used_at = now()
         WHERE token_hash = $1 AND expires_at > now() AND used_at IS NULL`, [tokenHash]);
       if (!user.active || !result.rowCount) throw new HttpError(400, 'Código inválido, expirado ou já usado.');
       await connection.query('UPDATE users SET password_hash = $1 WHERE id = $2', [hash, user.id]);
       await revokeSessions(connection, user.id);
       await invalidateRecovery(connection, user.id);
+      await clearUserLoginLimit(connection, user.username);
       await audit(connection, 'auth.password_reset', user.id, user.id);
     });
     res.status(204).end();
   });
 
   router.get('/me', requireUser, (req, res) => res.json({ user: publicUser(req.user) }));
-  router.post('/logout', requireUser, async (req, res) => {
-    await transaction(async (connection) => {
-      await connection.query('UPDATE user_sessions SET revoked_at = now() WHERE token_hash = $1', [req.sessionHash]);
-      await audit(connection, 'auth.logout', req.user.id, req.user.id);
-    });
+  router.post('/logout', async (req, res) => {
+    const token = getToken(req);
+    if (tokenPattern.test(token ?? '')) {
+      await transaction(async (connection) => {
+        const session = await one(`UPDATE user_sessions SET revoked_at = now()
+          WHERE token_hash = $1 AND revoked_at IS NULL AND expires_at > now()
+          RETURNING user_id`, [digest(token)], connection);
+        if (session) await audit(connection, 'auth.logout', session.user_id, session.user_id);
+      });
+    }
     res.clearCookie(authCookie, cookie).status(204).end();
   });
   return router;
