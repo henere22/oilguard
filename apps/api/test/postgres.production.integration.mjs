@@ -19,6 +19,7 @@ test('configuração operacional, HTTPS no proxy e credencial de ingestão', asy
   process.env.PUBLIC_ORIGIN = origin;
   process.env.TRUST_PROXY_HOPS = '1';
   process.env.INGEST_TOKEN = token;
+  process.env.SIMULATOR_ENABLED = 'true';
   const { db, one } = await import('../src/database.js');
   const { migrate } = await import('../src/migrate.js');
   const { createApp } = await import('../src/app.js');
@@ -31,6 +32,7 @@ test('configuração operacional, HTTPS no proxy e credencial de ingestão', asy
     server = createApp().listen(0, '127.0.0.1');
     await once(server, 'listening');
     const url = `http://127.0.0.1:${server.address().port}/api`;
+    assert.equal((await fetch(new URL('/healthz', url))).status, 200);
     assert.equal((await fetch(url + '/health')).status, 426);
     assert.equal((await fetch(url + '/health', { headers })).status, 200);
     const username = 'principal';
@@ -41,6 +43,11 @@ test('configuração operacional, HTTPS no proxy e credencial de ingestão', asy
     });
     assert.equal(login.status, 200);
     assert.match(login.headers.get('set-cookie'), /; Secure/);
+    const rejectedControl = await fetch(url + '/v1/admin/simulator', {
+      method: 'PATCH', headers: { ...headers, origin, cookie: login.headers.get('set-cookie').split(';')[0] },
+      body: JSON.stringify({ enabled: true }),
+    });
+    assert.equal(rejectedControl.status, 403);
 
     const send = (deviceId, credential) => fetch(url + '/v1/readings', {
       method: 'POST', headers: { ...headers, 'x-ingest-token': credential },

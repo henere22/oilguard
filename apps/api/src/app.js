@@ -7,12 +7,12 @@ import { dataMode, db, one, rows, transaction } from './database.js';
 import { adminRoutes, authRoutes, lockAdmin, requireAdmin, requireUser } from './auth.js';
 import { audit, HttpError, matchesSecret, rateLimit } from './security.js';
 import { calculateForecast, getStatusLabel, getTankStatus } from './domain.js';
+import { readingsSql, recordReading, refreshAlert, tankForUpdate } from './readings.js';
 import { getDailyReport, getPeriodReport, getDaysWithData } from './reports.js';
+import { simulatorRoutes } from './simulator-routes.js';
 
 const nowIso = () => new Date().toISOString();
 const tanksSql = "SELECT * FROM tanks ORDER BY kind";
-const tankForUpdate = 'SELECT * FROM tanks WHERE id = $1 FOR UPDATE';
-const readingsSql = 'SELECT * FROM readings WHERE tank_id = $1 ORDER BY measured_at DESC, id DESC LIMIT $2';
 const alertsSql = 'SELECT a.*, t.name AS tank_name FROM alerts a JOIN tanks t ON t.id = a.tank_id';
 const readingSchema = z.object({
   tankId: z.string().min(1).max(80),
@@ -45,20 +45,6 @@ function serializeAlert(alert) {
   };
 }
 
-async function refreshAlert(connection, tank, timestamp) {
-  const status = getTankStatus(tank);
-  const existing = await one('SELECT id, severity FROM alerts WHERE tank_id = $1 AND is_active', [tank.id], connection);
-  if (existing?.severity === status) return;
-  if (existing) await connection.query('UPDATE alerts SET is_active = false, resolved_at = $1 WHERE id = $2', [timestamp, existing.id]);
-  if (status === 'normal') return;
-
-  const title = tank.name + (status === 'critical' ? ': nível crítico' : ': nível de atenção');
-  const action = tank.kind === 'clean' ? 'necessidade de reposição de óleo limpo' : 'retirada de óleo usado';
-  const message = `O nível está em ${tank.level_percent.toFixed(1)}%. Verifique a ${action}.`;
-  await connection.query('INSERT INTO alerts (tank_id, severity, title, message, created_at) VALUES ($1, $2, $3, $4, $5)',
-    [tank.id, status, title, message, timestamp]);
-}
-
 function forecast(tank, history) {
   return { tankId: tank.id, tankName: tank.name, ...calculateForecast(tank, history) };
 }
@@ -77,8 +63,9 @@ export function createApp() {
   const ingestToken = process.env.INGEST_TOKEN;
   if (!Number.isInteger(proxyHops) || proxyHops < 0 || proxyHops > 3) throw new Error('TRUST_PROXY_HOPS inválido.');
   if (production && (!publicOrigin?.startsWith('https://') || new URL(publicOrigin).origin !== publicOrigin ||
-      !proxyHops || dataMode !== 'operational' || !ingestToken || ingestToken.length < 32)) {
-    throw new Error('Produção requer PUBLIC_ORIGIN HTTPS, proxy confiável, modo operacional e INGEST_TOKEN forte.');
+      !proxyHops || !process.env.DATABASE_URL || process.env.DATA_MODE !== dataMode ||
+      ((dataMode === 'operational' || ingestToken) && (ingestToken?.length ?? 0) < 32))) {
+    throw new Error('Produção requer PUBLIC_ORIGIN HTTPS, proxy confiável, DATABASE_URL e DATA_MODE explícitos. A ingestão requer INGEST_TOKEN forte.');
   }
 
   const origins = new Set([
@@ -93,6 +80,11 @@ export function createApp() {
   app.use(helmet({ contentSecurityPolicy: { directives: {
     upgradeInsecureRequests: production ? [] : null,
   } } }));
+  // O health check interno fala HTTP diretamente com o container.
+  app.get('/healthz', async (_req, res) => {
+    await db.query('SELECT 1 FROM system_settings');
+    res.set('Cache-Control', 'no-store').json({ status: 'ok' });
+  });
   app.use((req, _res, next) => {
     if (production && !req.secure) throw new HttpError(426, 'Use HTTPS.');
     next();
@@ -125,40 +117,25 @@ export function createApp() {
   app.post('/api/v1/readings', async (req, res) => {
     const parsed = readingSchema.safeParse(req.body);
     if (!parsed.success) throw new HttpError(400, 'Dados de leitura inválidos.');
-    if (dataMode === 'simulation') {
-      if (!matchesSecret(req.get('x-ingest-token'), ingestToken) || !ingestToken) {
-        await requireUser(req, res, () => {});
-        requireAdmin(req, res, () => {});
-      }
-    } else {
-      if (parsed.data.deviceId && /simulat|^seed$|^test$/i.test(parsed.data.deviceId)) {
-        throw new HttpError(403, 'A ingestão simulada exige um banco de simulação.');
-      }
-      if (!ingestToken || !matchesSecret(req.get('x-ingest-token'), ingestToken)) throw new HttpError(401, 'Credencial de ingestão inválida.');
+    if (dataMode === 'operational' && /simulat|^seed$|^test$/i.test(parsed.data.deviceId ?? '')) {
+      throw new HttpError(403, 'A ingestão simulada exige um banco de simulação.');
+    }
+    if (!ingestToken || !matchesSecret(req.get('x-ingest-token'), ingestToken)) {
+      throw new HttpError(401, 'Credencial de ingestão inválida.');
     }
 
     const input = parsed.data;
     const receivedAt = nowIso();
     const measuredAt = input.measuredAt ? new Date(input.measuredAt).toISOString() : receivedAt;
     if (Date.parse(measuredAt) > Date.parse(receivedAt) + 300000) throw new HttpError(400, 'Horário da medição está no futuro.');
-    const updated = await transaction(async (connection) => {
-      if (req.user) await lockAdmin(req, connection);
-      const tank = await one(tankForUpdate, [input.tankId], connection);
-      if (!tank) throw new HttpError(404, 'Compartimento não encontrado.');
-      const latest = await one(readingsSql, [tank.id, 1], connection);
-      await connection.query(`INSERT INTO readings (tank_id, level_percent, measured_at, received_at, device_id)
-        VALUES ($1, $2, $3, $4, $5)`, [tank.id, input.levelPercent, measuredAt, receivedAt,
-        dataMode === 'simulation' ? (input.deviceId ?? 'simulator') : (input.deviceId ?? null)]);
-      if (latest && measuredAt < latest.measured_at) return tank;
-      const current = await one('UPDATE tanks SET level_percent = $1, updated_at = $2 WHERE id = $3 RETURNING *',
-        [input.levelPercent, receivedAt, tank.id], connection);
-      await refreshAlert(connection, current, receivedAt);
-      return current;
-    });
+    const updated = await transaction((connection) => recordReading(connection, {
+      ...input, measuredAt, receivedAt, deviceId: input.deviceId ?? (dataMode === 'simulation' ? 'simulator' : null),
+    }));
     res.status(201).json({ accepted: true, tank: serializeTank(updated), receivedAt });
   });
 
   app.use('/api/v1', requireUser);
+  app.use('/api/v1/admin/simulator', requireAdmin, simulatorRoutes());
   app.use('/api/v1/admin', adminRoutes());
 
   app.get('/api/v1/dashboard', async (_req, res) => {

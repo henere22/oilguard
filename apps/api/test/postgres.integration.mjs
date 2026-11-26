@@ -24,7 +24,7 @@ test('PostgreSQL, monitoramento e permissões', async () => {
     await root.query(`CREATE SCHEMA ${schema}`);
     await migrate();
     await migrate();
-    assert.equal((await one('SELECT count(*) AS total FROM schema_migrations')).total, '3');
+    assert.equal((await one('SELECT count(*) AS total FROM schema_migrations')).total, '4');
     process.env.DATA_MODE = 'operational';
     process.env.NODE_ENV = 'production';
     assert.throws(() => createApp(), /Produção requer/);
@@ -83,7 +83,7 @@ test('PostgreSQL, monitoramento e permissões', async () => {
     await call(usersPath, { status: 403, headers: operatorHeaders });
     await call('/v1/admin/audit', { status: 403, headers: operatorHeaders });
     await call('/v1/tanks/oil-clean-01', { status: 403, method: 'PATCH', body: { critical_threshold: 13 }, headers: operatorHeaders });
-    await call('/v1/readings', { status: 403, method: 'POST', body: { tankId: 'oil-clean-01', levelPercent: 20 }, headers: operatorHeaders });
+    await call('/v1/readings', { status: 401, method: 'POST', body: { tankId: 'oil-clean-01', levelPercent: 20 }, headers: operatorHeaders });
     await call('/v1/tanks', { status: 400, method: 'PATCH', headers: adminHeaders, body: {
       'oil-clean-01': { attention_threshold: 35, critical_threshold: 13 },
       'oil-used-01': { attention_threshold: 90, critical_threshold: 85 },

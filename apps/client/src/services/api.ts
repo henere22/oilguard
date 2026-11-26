@@ -25,6 +25,28 @@ export interface RecoveryCode {
   expiresAt: string;
 }
 
+export type SimulatorScenario = 'normal' | 'attention' | 'critical' | 'demo';
+
+export interface SimulatorSettings {
+  enabled: boolean;
+  scenario: SimulatorScenario;
+  intervalMs: number;
+}
+
+export interface SimulatorState extends SimulatorSettings {
+  available: boolean;
+  workerOnline: boolean;
+  scenarios: Record<SimulatorScenario, {
+    name: string;
+    clean: { start: number; rate: number };
+    used: { start: number; rate: number };
+  }>;
+  tickCount: number;
+  cleanLevel: number;
+  usedLevel: number;
+  lastTickAt: string | null;
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const headers = new Headers(options?.headers);
   headers.set('Accept', 'application/json');
@@ -160,8 +182,10 @@ export const api = {
   getTanks: (signal?: AbortSignal) => request<{ data: Tank[] }>('/api/v1/tanks', { signal }),
   updateThresholds: (data: Record<'oil-clean-01' | 'oil-used-01', Threshold>) =>
     send<{ data: Tank[] }>('/api/v1/tanks', 'PATCH', data),
-  simulateReading: (tankId: string, levelPercent: number, measuredAt: string) =>
-    send('/api/v1/readings', 'POST', { tankId, levelPercent, measuredAt, deviceId: 'browser-simulator' }),
+  getSimulator: (signal?: AbortSignal) => request<SimulatorState>('/api/v1/admin/simulator', { signal }),
+  updateSimulator: (data: Partial<SimulatorSettings>) =>
+    send<SimulatorState>('/api/v1/admin/simulator', 'PATCH', data),
+  resetSimulator: () => send<SimulatorState>('/api/v1/admin/simulator/reset', 'POST', {}),
   getAlerts: (signal?: AbortSignal) => request<{ data: OilAlert[] }>('/api/v1/alerts', { signal }),
   getReadings: (query: URLSearchParams, signal?: AbortSignal) => request<{ data: Array<{
     id: number;

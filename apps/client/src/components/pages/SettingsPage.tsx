@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { Droplet, Bell, Save, RotateCcw, Shield, Info, Monitor, Smartphone, SlidersHorizontal, RotateCw, Zap, Terminal, XCircle, Check, AlertCircle, BarChart2 } from 'lucide-react';
-import { useSimulator, SCENARIOS } from '../../hooks/useSimulator';
+import { useSimulator } from '../../hooks/useSimulator';
 import { audioPreferencesEvent } from '../../hooks/useAudioAlerts';
-import { api, type SessionUser } from '../../services/api';
+import { api, type SessionUser, type SimulatorScenario } from '../../services/api';
 import type { Tank } from '../../types/oilguard';
 import { UsersPage } from './UsersPage';
 
@@ -20,7 +20,10 @@ export function SettingsPage({ user, tanks, simulation, onSaved }: {
   onSaved: () => Promise<void>;
 }) {
   const admin = user.role === 'admin';
-  const { config, status, updateConfig, resetScenario, scenarios } = useSimulator(admin && simulation);
+  const { state: simulator, error: simulatorError, busy: simulatorBusy, updateConfig, resetScenario } = useSimulator(admin && simulation);
+  const simulatorRunning = Boolean(simulator?.enabled && simulator.workerOnline);
+  const simulatorDisabled = simulatorBusy || !simulator?.available;
+  const lastTick = simulator?.lastTickAt ? new Date(simulator.lastTickAt).toLocaleTimeString('pt-BR') : null;
 
   const [thresholds, setThresholds] = useState<Thresholds>(() => {
     const clean = tanks.find((tank) => tank.kind === 'clean');
@@ -272,7 +275,7 @@ export function SettingsPage({ user, tanks, simulation, onSaved }: {
             <li>Limites de Atenção/Crítico são PROVISÓRIOS e devem ser confirmados pela equipe Bosch/SENAI.</li>
             <li>Capacidades em litros não foram informadas — conversão percentual ↔ litros pendente.</li>
             <li>Contrato de dados Modbus/ESP32 precisa ser alinhado com a equipe de mecatrônica.</li>
-            <li>API exposta em rede local sem TLS — não expor à internet.</li>
+            <li>A implantação pública usa HTTPS.</li>
           </ul>
         </div>
       </article>
@@ -283,166 +286,182 @@ export function SettingsPage({ user, tanks, simulation, onSaved }: {
             <div className="settings-section-icon warning"><Zap size={18} /></div>
             <div>
               <h2>Simulador Interno</h2>
-              <p>Gera leituras simuladas diretamente no navegador e envia para a API</p>
+              <p>Gera leituras simuladas em segundo plano, mesmo fora desta tela.</p>
             </div>
           </div>
         </div>
 
-        <div className="simulator-grid">
-          {/* Controles Principais */}
-          <div className="simulator-card">
-            <div className="simulator-status">
-              <div className="simulator-status-indicator">
-                <div className={`simulator-status-dot ${status.running ? 'running' : 'stopped'}`} />
-                <strong className="simulator-status-text">{status.running ? 'RODANDO' : 'PARADO'}</strong>
+        {!simulator && <p role="status">{simulatorError || 'Consultando o simulador…'}</p>}
+        {simulator && <>
+          <div className="simulator-grid">
+            {/* Controles Principais */}
+            <div className="simulator-card">
+              <div className="simulator-status">
+                <div className="simulator-status-indicator">
+                  <div className={`simulator-status-dot ${simulatorRunning ? 'running' : 'stopped'}`} />
+                  <strong className="simulator-status-text">{simulatorRunning ? 'RODANDO' : simulator.available ? 'PARADO' : 'DESABILITADO'}</strong>
+                </div>
+                <label className="simulator-toggle">
+                  <input
+                    type="checkbox"
+                    checked={simulator.enabled}
+                    disabled={simulatorDisabled}
+                    onChange={(e) => void updateConfig({ enabled: e.target.checked })}
+                  />
+                  <span>{simulator.enabled ? 'Pausar' : 'Ativar'}</span>
+                </label>
               </div>
-              <label className="simulator-toggle">
-                <input
-                  type="checkbox"
-                  checked={config.enabled}
-                  onChange={(e) => updateConfig({ enabled: e.target.checked })}
-                />
-                <span>{config.enabled ? 'Desativar' : 'Ativar'}</span>
-              </label>
-            </div>
 
-            <div className="simulator-field">
-              <label className="simulator-field-label">Cenário de Simulação</label>
-              <div className="scenario-buttons">
-                {scenarios.map((scenario) => {
-                  const scenarioConfig = SCENARIOS[scenario];
-                  return (
-                    <button
-                      key={scenario}
-                      onClick={() => updateConfig({ scenario })}
-                      className={`scenario-button ${config.scenario === scenario ? 'selected' : ''}`}
-                    >
-                      <span>{scenarioConfig.name}</span>
-                      <span className="rates">
-                        Limpo: {scenarioConfig.clean.rate > 0 ? '+' : ''}{scenarioConfig.clean.rate.toFixed(1)}%/tick
-                        {' | '}
-                        Usado: {scenarioConfig.used.rate > 0 ? '+' : ''}{scenarioConfig.used.rate.toFixed(1)}%/tick
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="simulator-field">
-              <label className="simulator-field-label">Intervalo entre leituras</label>
-              <div className="interval-input">
-                <input
-                  type="number"
-                  min={1000}
-                  max={60000}
-                  step={1000}
-                  value={config.intervalMs}
-                  onChange={(e) => updateConfig({ intervalMs: Math.max(1000, Math.min(60000, Number(e.target.value))) })}
-                />
-                <span className="unit">ms</span>
-                <div className="interval-presets">
-                  {[2000, 5000, 10000, 30000].map((ms) => (
-                    <button
-                      key={ms}
-                      onClick={() => updateConfig({ intervalMs: ms })}
-                      className={`interval-preset ${config.intervalMs === ms ? 'selected' : ''}`}
-                    >
-                      {ms === 1000 ? '1s' : `${ms / 1000}s`}
-                    </button>
-                  ))}
+              <div className="simulator-field">
+                <label className="simulator-field-label">Cenário de Simulação</label>
+                <div className="scenario-buttons">
+                  {(Object.keys(simulator.scenarios) as SimulatorScenario[]).map((scenario) => {
+                    const scenarioConfig = simulator.scenarios[scenario];
+                    return (
+                      <button
+                        key={scenario}
+                        onClick={() => void updateConfig({ scenario })}
+                        disabled={simulatorDisabled}
+                        className={`scenario-button ${simulator.scenario === scenario ? 'selected' : ''}`}
+                      >
+                        <span>{scenarioConfig.name}</span>
+                        <span className="rates">
+                          Limpo: {scenarioConfig.clean.rate > 0 ? '+' : ''}{scenarioConfig.clean.rate.toFixed(1)}%/tick
+                          {' | '}
+                          Usado: {scenarioConfig.used.rate > 0 ? '+' : ''}{scenarioConfig.used.rate.toFixed(1)}%/tick
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
-            </div>
 
-            <div className="simulator-actions">
-              <button
-                onClick={resetScenario}
-                disabled={!status.running}
-                className="simulator-action reset"
-              >
-                <RotateCw size={14} /> Reiniciar Cenário
-              </button>
-              <button
-                onClick={resetScenario}
-                className="simulator-action clear"
-              >
-                <Terminal size={14} /> Limpar Dados API
-              </button>
-            </div>
-          </div>
-
-          {/* Status em Tempo Real */}
-          <div className="simulator-card realtime-status">
-            <strong className="realtime-status-title">Status em Tempo Real</strong>
-            <div className="realtime-levels">
-              <div className="realtime-level clean">
-                <div className="realtime-level-header">
-                  <div className="realtime-level-icon clean"><Droplet size={14} /></div>
-                  <span className="realtime-level-label">ÓLEO LIMPO</span>
+              <div className="simulator-field">
+                <label className="simulator-field-label">Intervalo entre leituras</label>
+                <div className="interval-input">
+                  <input
+                    type="number"
+                    min={1000}
+                    max={60000}
+                    step={1000}
+                    key={simulator.intervalMs}
+                    defaultValue={simulator.intervalMs}
+                    disabled={simulatorDisabled}
+                    onBlur={(e) => {
+                      const input = e.currentTarget;
+                      const value = Math.round(input.valueAsNumber);
+                      const intervalMs = Number.isFinite(value) ? Math.max(1000, Math.min(60000, value)) : simulator.intervalMs;
+                      input.value = String(simulator.intervalMs);
+                      if (intervalMs !== simulator.intervalMs) void updateConfig({ intervalMs });
+                    }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                  />
+                  <span className="unit">ms</span>
+                  <div className="interval-presets">
+                    {[2000, 5000, 10000, 30000].map((ms) => (
+                      <button
+                        key={ms}
+                        onClick={() => void updateConfig({ intervalMs: ms })}
+                        disabled={simulatorDisabled}
+                        className={`interval-preset ${simulator.intervalMs === ms ? 'selected' : ''}`}
+                      >
+                        {ms === 1000 ? '1s' : `${ms / 1000}s`}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <div className="realtime-level-value clean">{status.cleanLevel.toFixed(1)}%</div>
-                <div className="realtime-level-tick">Tick #{status.tickCount}</div>
               </div>
-              <div className="realtime-level used">
-                <div className="realtime-level-header">
-                  <div className="realtime-level-icon used"><Droplet size={14} /></div>
-                  <span className="realtime-level-label">ÓLEO USADO</span>
+
+              <div className="simulator-actions">
+                <button
+                  onClick={resetScenario}
+                  disabled={simulatorDisabled || !simulator.enabled}
+                  className="simulator-action reset"
+                >
+                  <RotateCw size={14} /> Reiniciar Cenário
+                </button>
+                <button
+                  onClick={resetScenario}
+                  disabled={simulatorDisabled}
+                  className="simulator-action clear"
+                >
+                  <Terminal size={14} /> Zerar contadores
+                </button>
+              </div>
+            </div>
+
+            {/* Status em Tempo Real */}
+            <div className="simulator-card realtime-status">
+              <strong className="realtime-status-title">Status em Tempo Real</strong>
+              <div className="realtime-levels">
+                <div className="realtime-level clean">
+                  <div className="realtime-level-header">
+                    <div className="realtime-level-icon clean"><Droplet size={14} /></div>
+                    <span className="realtime-level-label">ÓLEO LIMPO</span>
+                  </div>
+                  <div className="realtime-level-value clean">{simulator.cleanLevel.toFixed(1)}%</div>
+                  <div className="realtime-level-tick">Tick #{simulator.tickCount}</div>
                 </div>
-                <div className="realtime-level-value used">{status.usedLevel.toFixed(1)}%</div>
-                <div className="realtime-level-tick">Tick #{status.tickCount}</div>
+                <div className="realtime-level used">
+                  <div className="realtime-level-header">
+                    <div className="realtime-level-icon used"><Droplet size={14} /></div>
+                    <span className="realtime-level-label">ÓLEO USADO</span>
+                  </div>
+                  <div className="realtime-level-value used">{simulator.usedLevel.toFixed(1)}%</div>
+                  <div className="realtime-level-tick">Tick #{simulator.tickCount}</div>
+                </div>
               </div>
-            </div>
 
-            <div className="realtime-meta">
-              <div className="realtime-meta-item">
-                <div className="realtime-meta-label">Cenário Ativo</div>
-                <div className="realtime-meta-value">{SCENARIOS[config.scenario].name}</div>
+              <div className="realtime-meta">
+                <div className="realtime-meta-item">
+                  <div className="realtime-meta-label">Cenário Ativo</div>
+                  <div className="realtime-meta-value">{simulator.scenarios[simulator.scenario].name}</div>
+                </div>
+                <div className="realtime-meta-item">
+                  <div className="realtime-meta-label">Último Envio</div>
+                  <div className="realtime-meta-value">{lastTick || '—'}</div>
+                </div>
               </div>
-              <div className="realtime-meta-item">
-                <div className="realtime-meta-label">Último Envio</div>
-                <div className="realtime-meta-value">{status.lastTick || '—'}</div>
-              </div>
-            </div>
 
-            {status.lastError && (
-              <div className="realtime-error">
-                <XCircle size={14} />
-                <span>Erro: {status.lastError}</span>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Log de Atividade */}
-        <div className="activity-log">
-          <div className="activity-log-header">
-            <strong className="activity-log-title">Log de Atividade</strong>
-            <span className={`activity-log-status ${status.running ? 'active' : ''}`}>
-              {status.running ? (
-                <>
-                  <span className="pulse-dot" />
-                  ATIVO
-                </>
-              ) : (
-                'INATIVO'
+              {simulatorError && (
+                <div className="realtime-error">
+                  <XCircle size={14} />
+                  <span>Erro: {simulatorError}</span>
+                </div>
               )}
-            </span>
+            </div>
           </div>
-          <div className="activity-log-content">
-            <div className="info">[{new Date().toLocaleTimeString('pt-BR')}] Simulador carregado. Cenário: {SCENARIOS[config.scenario].name}</div>
-            <div className="info">[{new Date().toLocaleTimeString('pt-BR')}] Níveis iniciais: Limpo {SCENARIOS[config.scenario].clean.start}% | Usado {SCENARIOS[config.scenario].used.start}%</div>
-            {status.tickCount > 0 && (
-              <div className="info">[{status.lastTick}] Tick #{status.tickCount} enviado — Limpo {status.cleanLevel.toFixed(1)}% | Usado {status.usedLevel.toFixed(1)}%</div>
-            )}
-            {status.lastError && (
-              <div className="error">[{new Date().toLocaleTimeString('pt-BR')}] ERRO: {status.lastError}</div>
-            )}
-            {!status.running && status.tickCount === 0 && (
-              <div className="muted">Ative o simulador para iniciar a geração de leituras.</div>
-            )}
+
+          {/* Log de Atividade */}
+          <div className="activity-log">
+            <div className="activity-log-header">
+              <strong className="activity-log-title">Log de Atividade</strong>
+              <span className={`activity-log-status ${simulatorRunning ? 'active' : ''}`}>
+                {simulatorRunning ? (
+                  <>
+                    <span className="pulse-dot" />
+                    ATIVO
+                  </>
+                ) : (
+                  'INATIVO'
+                )}
+              </span>
+            </div>
+            <div className="activity-log-content">
+              <div className="info">Cenário: {simulator.scenarios[simulator.scenario].name}</div>
+              <div className="info">Níveis iniciais: Limpo {simulator.scenarios[simulator.scenario].clean.start}% | Usado {simulator.scenarios[simulator.scenario].used.start}%</div>
+              {simulator.tickCount > 0 && (
+                <div className="info">[{lastTick}] Tick #{simulator.tickCount} gravado — Limpo {simulator.cleanLevel.toFixed(1)}% | Usado {simulator.usedLevel.toFixed(1)}%</div>
+              )}
+              {simulator.available && !simulator.workerOnline && (
+                <div className="muted">Aguardando conexão do Worker.</div>
+              )}
+              {simulator.available && simulator.workerOnline && !simulator.enabled && (
+                <div className="muted">Ative o simulador para iniciar a geração de leituras.</div>
+              )}
+            </div>
           </div>
-        </div>
+        </>}
       </article>}
 
       <style>{`

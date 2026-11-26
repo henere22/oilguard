@@ -29,8 +29,8 @@ export async function one(sql, values = [], connection = db) {
   return (await rows(sql, values, connection))[0];
 }
 
-export async function transaction(work, { snapshot = false } = {}) {
-  const connection = await db.connect();
+export async function transaction(work, { snapshot = false, client } = {}) {
+  const connection = client ?? await db.connect();
   let discard = false;
   try {
     await connection.query(snapshot ? 'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY' : 'BEGIN');
@@ -45,6 +45,6 @@ export async function transaction(work, { snapshot = false } = {}) {
     }
     throw error;
   } finally {
-    connection.release(discard);
+    if (!client) connection.release(discard);
   }
 }
