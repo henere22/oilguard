@@ -1,5 +1,4 @@
-import { createHash } from 'node:crypto';
-import { mkdir } from 'node:fs/promises';
+import { createHash, randomUUID } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
@@ -14,13 +13,12 @@ const tables = {
 };
 const apiRoot = fileURLToPath(new URL('../', import.meta.url));
 const legacyPath = process.argv[2] ?? resolve(apiRoot, process.env.DB_FILE ?? 'data/oilguard.sqlite');
-const backupPath = resolve(dirname(legacyPath), `oilguard-before-postgres-${Date.now()}.sqlite`);
+const backupPath = resolve(dirname(legacyPath), `oilguard-before-postgres-${Date.now()}-${randomUUID()}.sqlite`);
 const timestampFields = ['updated_at', 'measured_at', 'received_at', 'created_at', 'resolved_at'];
 
 async function snapshot() {
   const legacy = new Database(legacyPath, { readonly: true, fileMustExist: true });
   try {
-    await mkdir(dirname(backupPath), { recursive: true });
     await legacy.backup(backupPath);
   } finally {
     legacy.close();
@@ -38,7 +36,12 @@ async function snapshot() {
         for (const field of timestampFields) {
           if (row[field] != null) row[field] = new Date(row[field]).toISOString();
         }
-        if (table === 'alerts') row.is_active = Boolean(row.is_active);
+        if (table === 'alerts') {
+          if (row.is_active !== 0 && row.is_active !== 1) {
+            throw new Error(`Alerta legado ${row.id} com indicador is_active inválido. Esperado 0 ou 1.`);
+          }
+          row.is_active = row.is_active === 1;
+        }
       }
     }
     const sequences = backup.prepare("SELECT name, seq FROM sqlite_sequence WHERE name IN ('alerts', 'readings') ORDER BY name").all();
