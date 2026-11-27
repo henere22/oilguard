@@ -6,7 +6,7 @@ try {
   const app = createApp();
   await migrate();
   const port = Number(process.env.PORT ?? 3333);
-  const host = process.env.HOST ?? '127.0.0.1';
+  const host = process.env.HOST ?? '0.0.0.0';
   const server = app.listen(port, host);
   server.on('listening', () => {
     console.log(`OILGUARD API ouvindo em ${host}:${port} com PostgreSQL.`);
