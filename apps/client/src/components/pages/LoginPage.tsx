@@ -53,7 +53,7 @@ export function LoginPage({ onLogin, initialError = '' }: {
           </label>
           {recovering && <p>Use o código recebido do administrador. A senha deve ter pelo menos 12 caracteres.</p>}
           {message && <p role="status">{message}</p>}
-          <button className="page-intro-btn save" disabled={busy}>{busy ? 'Aguarde…' : recovering ? 'Salvar senha' : 'Entrar'}</button>
+          <button type="submit" className="page-intro-btn save auth-submit" disabled={busy}>{busy ? 'Aguarde…' : recovering ? 'Salvar senha' : 'Entrar'}</button>
         </form>
         <button className="auth-link" disabled={busy} onClick={() => {
           setRecovering(!recovering);

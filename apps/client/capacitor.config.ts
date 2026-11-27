@@ -10,6 +10,9 @@ const config: CapacitorConfig = {
     androidScheme: 'https',
     cleartext: localHttp,
   },
+  plugins: {
+    SystemBars: { style: 'DARK' },
+  },
   android: {
     allowMixedContent: localHttp,
   },

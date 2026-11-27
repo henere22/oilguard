@@ -2,6 +2,7 @@ import type { DashboardData, OilAlert, Tank } from '../types/oilguard';
 import { Capacitor } from '@capacitor/core';
 
 const native = Capacitor.isNativePlatform() || '__TAURI_INTERNALS__' in window;
+export { native as isNativeApp };
 const API_URL = (native ? (import.meta.env.VITE_API_URL || 'http://127.0.0.1:3333') : '').replace(/\/$/, '');
 let sessionToken: string | undefined;
 

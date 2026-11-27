@@ -2,6 +2,12 @@
 
 OILGUARD acompanha o nível de óleo limpo e usado em dois compartimentos. A mesma interface React atende navegador, Windows (Tauri 2) e Android (Capacitor 8). O Express atende os três clientes e armazena usuários, sessões, parâmetros e dados de monitoramento no PostgreSQL.
 
+## Downloads
+
+Os instaladores de demonstração para Windows 64 bits e Android 7 ou superior estão na [release v0.1.1](https://github.com/henere22/oilguard/releases/tag/v0.1.1). O Windows usa um instalador MSI. O APK Android tem assinatura de teste.
+
+Os aplicativos se conectam à API hospedada e pedem uma conta do OILGUARD.
+
 ## Desenvolvimento local
 
 Use Node.js 24 LTS e PostgreSQL 17. O arquivo `compose.yaml` oferece PostgreSQL com volume persistente e porta restrita ao computador local. Use um servidor PostgreSQL já instalado se preferir. O [guia Northflank](docs/implantacao-nuvem.md) inclui comandos para testar as duas imagens localmente.
@@ -55,7 +61,7 @@ Ao concluir a recuperação da senha, o bloqueio por tentativas da conta é limp
 
 Em `DATA_MODE=simulation`, defina `SIMULATOR_ENABLED=true` em `apps/api/.env` para a API e o Worker. Execute `npm run dev:api` para iniciar só a API ou `npm run dev` para iniciar a API e o Vite. Em outro terminal, execute `npm run worker`. Os dois processos usam o mesmo `DATABASE_URL`. O Worker responde em `http://127.0.0.1:3336/healthz` e o ambiente fica identificado na interface e nos CSVs.
 
-Entre como administrador e use **Configurações → Simulador Interno** para selecionar o cenário e o intervalo, iniciar, pausar ou reiniciar. A simulação começa pausada em um banco novo. Uma execução já autorizada permanece registrada no PostgreSQL e pode continuar quando a interface fecha ou o Worker volta. Pause antes de encerrar a demonstração. A reinicialização zera o contador do cenário e os níveis do simulador. O histórico de leituras é preservado.
+Na interface Web, entre como administrador e use **Configurações → Simulador Interno** para selecionar o cenário e o intervalo, iniciar, pausar ou reiniciar. A simulação começa pausada em um banco novo. Uma execução já autorizada permanece registrada no PostgreSQL e pode continuar quando a interface fecha ou o Worker volta. Pause antes de encerrar a demonstração. A reinicialização zera o contador do cenário e os níveis do simulador. O histórico de leituras é preservado.
 
 ## Aplicativos e validação
 

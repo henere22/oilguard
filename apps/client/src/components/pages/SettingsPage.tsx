@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { Droplet, Bell, Save, RotateCcw, Shield, Info, Monitor, Smartphone, SlidersHorizontal, RotateCw, Zap, Terminal, XCircle, Check, AlertCircle, BarChart2 } from 'lucide-react';
+import { Droplet, Bell, Save, RotateCcw, Shield, Info, Monitor, SlidersHorizontal, RotateCw, Zap, Terminal, XCircle, Check, AlertCircle, BarChart2 } from 'lucide-react';
 import { useSimulator } from '../../hooks/useSimulator';
 import { audioPreferencesEvent } from '../../hooks/useAudioAlerts';
-import { api, type SessionUser, type SimulatorScenario } from '../../services/api';
+import { api, isNativeApp, type SessionUser, type SimulatorScenario } from '../../services/api';
 import type { Tank } from '../../types/oilguard';
 import { UsersPage } from './UsersPage';
 
@@ -20,7 +20,8 @@ export function SettingsPage({ user, tanks, simulation, onSaved }: {
   onSaved: () => Promise<void>;
 }) {
   const admin = user.role === 'admin';
-  const { state: simulator, error: simulatorError, busy: simulatorBusy, updateConfig, resetScenario } = useSimulator(admin && simulation);
+  const showSimulator = !isNativeApp && admin && simulation;
+  const { state: simulator, error: simulatorError, busy: simulatorBusy, updateConfig, resetScenario } = useSimulator(showSimulator);
   const simulatorRunning = Boolean(simulator?.enabled && simulator.workerOnline);
   const simulatorDisabled = simulatorBusy || !simulator?.available;
   const lastTick = simulator?.lastTickAt ? new Date(simulator.lastTickAt).toLocaleTimeString('pt-BR') : null;
@@ -260,27 +261,16 @@ export function SettingsPage({ user, tanks, simulation, onSaved }: {
         </div>
 
         <div className="info-grid">
-          <InfoCard label="Versão" value="0.1.0 (Protótipo)" icon={Monitor} />
-          <InfoCard label="Plataforma" value="Windows ? Android ? Web" icon={Smartphone} />
+          <InfoCard label="Versão" value="0.1.1 (Protótipo)" icon={Monitor} />
+
           <InfoCard label="Backend" value="Node.js + Express + PostgreSQL" icon={Shield} />
           <InfoCard label="Frontend" value="React 19 + TypeScript + Vite" icon={Monitor} />
           <InfoCard label="Gráficos" value="Recharts" icon={BarChart2} />
-          <InfoCard label="Ícones" value="lucide-react" icon={BarChart2} />
-        </div>
 
-        <div className="settings-notes">
-          <strong>Observações importantes:</strong>
-          <ul>
-            <li>Este é um protótipo para demonstração. Não use para decisões operacionais reais.</li>
-            <li>Limites de Atenção/Crítico são PROVISÓRIOS e devem ser confirmados pela equipe Bosch/SENAI.</li>
-            <li>Capacidades em litros não foram informadas — conversão percentual ↔ litros pendente.</li>
-            <li>Contrato de dados Modbus/ESP32 precisa ser alinhado com a equipe de mecatrônica.</li>
-            <li>A implantação pública usa HTTPS.</li>
-          </ul>
         </div>
       </article>
 
-      {admin && simulation && <article className="settings-section">
+      {showSimulator && <article className="settings-section">
         <div className="settings-section-header">
           <div className="settings-section-title">
             <div className="settings-section-icon warning"><Zap size={18} /></div>
